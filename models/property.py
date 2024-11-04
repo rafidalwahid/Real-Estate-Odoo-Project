@@ -4,16 +4,24 @@ from odoo import fields, models, api
 class EstateProperty(models.Model):
     _name = 'estates.property'
     _description = 'Estate Properties'
+    color = fields.Integer(string="Color")
 
     name = fields.Char(string="Property Name", required=True)
+    state = fields.Selection(
+        [('new', 'New'),
+         ('received', 'Offer Received'),
+         ('accepted', 'Offer Accepted'),
+         ('sold', 'Sold'),
+         ('cancel', 'Cancelled')],
+        default='new', string="Status")
     tag_ids = fields.Many2many('estates.property.tag', string="Property Tag")
     type_id = fields.Many2one('estates.property.type', string="Property Type")
     description = fields.Text(string="Description")
     postcode = fields.Char(string="Postcode")
-    dates_availability = fields.Date(string="Available From", readonly=True)
+    dates_availability = fields.Date(string="Available From", readonly=False)
     expected_price = fields.Float(string="Expected Price")
-    best_offer = fields.Float(string="Best Offer")
-    selling_price = fields.Float(string="Selling Price")
+    best_offer = fields.Float(string="Best Offer", compute='_compute_best_price')
+    selling_price = fields.Float(string="Selling Price", readonly=True)
     bedrooms = fields.Integer(string="Bedrooms", default=0)
     living_area = fields.Integer(string="Living Area (sqm)", default=0)
     facades = fields.Integer(string="Facades", default=0)
@@ -34,6 +42,36 @@ class EstateProperty(models.Model):
     def _onchange_total_area(self):
         self.total_area = self.living_area + self.garden_area
 
+    def action_sold(self):
+        self.state = 'sold'
+
+    def action_cancel(self):
+        self.state = 'cancel'
+
+    @api.depends('offer_ids')
+    def _compute_offer_count(self):
+        for rec in self:
+            rec.offer_count = len(rec.offer_ids)
+
+    offer_count = fields.Integer(string="Offer Count", compute=_compute_offer_count)
+
+    def action_property_view_offers(self):
+        return {
+            'type': 'ir.actions.act_window',
+            'name': f"{self.name} - Offers",
+            'domain': [('property_id', '=', self.id)],
+            'view_mode': 'tree',
+            'res_model': 'estates.property.offer'
+        }
+
+    @api.depends('offer_ids')
+    def _compute_best_price(self):
+        for rec in self:
+            if rec.offer_ids:
+                rec.best_offer = max(rec.offer_ids.mapped('price'))
+            else:
+                rec.best_offer = 0
+
 
 class PropertyType(models.Model):
     _name = 'estates.property.type'
@@ -44,6 +82,6 @@ class PropertyType(models.Model):
 class PropertyTags(models.Model):
     _name = 'estates.property.tag'
     _description = 'Property Tag'
+
     name = fields.Char(string="Name", required=True)
-
-
+    color = fields.Integer(string="Color")
